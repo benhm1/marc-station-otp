@@ -94,14 +94,13 @@ def timestamp_diff(t1, t2):
 
 def calculate_delays(schedule, actual):
     
-    if len(schedule) != len(actual):
-        print('Cannot calculate delays! Schedule length differs from actual!')
-        return {}
-
     rv = {}
     for idx, (stop, stop_time) in enumerate(schedule):
-        delay = timestamp_diff(stop_time, actual[str(idx + 1)])
-        rv[stop] = delay
+        if str(idx + 1) in actual:
+            delay = timestamp_diff(stop_time, actual[str(idx + 1)])
+            rv[stop] = delay
+        else:
+            print(f'Missing data for {stop}!')
 
     return rv
     
