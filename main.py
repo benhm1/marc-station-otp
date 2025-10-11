@@ -28,7 +28,7 @@ def get_train_actuals(event):
 
         doc_ref.set(status, merge=True)
     
-@scheduler_fn.on_schedule(schedule="0 7 * * *")
+@scheduler_fn.on_schedule(schedule="0 7 * * *", secrets=['PAT_TOKEN'])
 def calculate_train_delays(event):
 
     db_actuals = db.collection('actuals')
