@@ -62,7 +62,7 @@ def calculate_train_delays(event):
         # Get its schedule and calculate per-station delays
         schedule = train_data.get_train_schedule(train_num)
         delay_data = t.to_dict()
-        delays = train_data.calculate_delays(schedule, delays_data)
+        delays = train_data.calculate_delays(schedule, delay_data)
         print(f'Train {train_num} delays: {delays}')
 
         # Update the delays document for this train
@@ -98,9 +98,9 @@ def calculate_train_delays(event):
             git_helpers.update_readme(train_num)
             
         git_helpers.push_file(f'data/{t.id}',
-                              json.dumps(delays_data),
+                              json.dumps(delay_data),
                               f'Uploading raw data {t.id}')
-
+    
 def generate_md(schedule, train_num, train_data):
     rv = ''
     rv += f'## Train {train_num}\n\n'
@@ -139,4 +139,3 @@ def clean_up_actuals():
         db_actuals.document(t.id).delete()
 
     print('Done cleaning up old actuals')
-    
