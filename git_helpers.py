@@ -5,7 +5,16 @@ from github import Github, InputGitAuthor
 GITHUB_TOKEN = os.environ.get("PAT_TOKEN") 
 REPO_NAME = "benhm1/benhm1.github.io"
 
-def update_readme(repo, train_num):
+def update_readme(train_num):
+
+    g = Github(GITHUB_TOKEN)
+    try:
+        # Get the repository object
+        repo = g.get_repo(REPO_NAME)
+    except Exception as e:
+        print(f"Error getting repository: {e}")
+        return None
+
     contents = repo.get_contents('README.md')
 
     readme_content = contents.decoded_content.decode('utf-8')
@@ -32,25 +41,44 @@ def update_readme(repo, train_num):
     print("Readme updated")
     
 
-def push_file_to_github(train_num, file_path, file_content, commit_message):
-    """Pushes a file with in-memory content to a GitHub repository."""
-    
+def get_file_contents(file_path):
     g = Github(GITHUB_TOKEN)
     try:
         # Get the repository object
         repo = g.get_repo(REPO_NAME)
     except Exception as e:
         print(f"Error getting repository: {e}")
-        return
+        return None
 
     try:
         # Check if the file already exists in the repo
         contents = repo.get_contents(file_path)
-        
-        # If the file exists, update it
-        print(f"File '{file_path}' exists. Updating content...")
-        
-        # The update_file method handles converting the string/bytes to base64
+    
+    except Exception as e:
+        # If the file does NOT exist (raises an exception), create it
+        if "404" in str(e):
+            print(f"File '{file_path}' does not exist.")
+        else:
+            print(f"An unexpected error occurred: {e}")
+        return None
+    
+    return contents
+    
+    
+def push_file_to_github(file_path, file_content, commit_message):
+    """Pushes a file with in-memory content to a GitHub repository."""
+    
+    created = False
+    existing = get_file_contents(file_path)
+    if existing is None:
+        repo.create_file(
+            path=file_path, 
+            message=commit_message, 
+            content=file_content
+        )
+        print("File created successfully.")
+        created = True
+    else:
         repo.update_file(
             path=file_path, 
             message=commit_message, 
@@ -58,21 +86,4 @@ def push_file_to_github(train_num, file_path, file_content, commit_message):
             sha=contents.sha
         )
         print("File updated successfully.")
-
-    except Exception as e:
-        # If the file does NOT exist (raises an exception), create it
-        if "404" in str(e): 
-            print(f"File '{file_path}' does not exist. Creating new file...")
-            
-            # The create_file method handles converting the string/bytes to base64
-            repo.create_file(
-                path=file_path, 
-                message=commit_message, 
-                content=file_content
-            )
-            print("File created successfully.")
-
-            update_readme(repo, train_num)
-        else:
-            print(f"An unexpected error occurred: {e}")
-
+    return created

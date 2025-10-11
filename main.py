@@ -1,6 +1,7 @@
 import train_data
 import git_helpers
 
+import json
 import datetime
 
 import functions_framework
@@ -60,7 +61,8 @@ def calculate_train_delays(event):
 
         # Get its schedule and calculate per-station delays
         schedule = train_data.get_train_schedule(train_num)
-        delays = train_data.calculate_delays(schedule, t.to_dict())
+        delay_data = t.to_dict()
+        delays = train_data.calculate_delays(schedule, delays_data)
         print(f'Train {train_num} delays: {delays}')
 
         # Update the delays document for this train
@@ -89,11 +91,15 @@ def calculate_train_delays(event):
         md = generate_md(schedule, train_num, data)
         
         # Push Markdown File
-        git_helpers.push_file_to_github(train_num,
-                                        f'{train_num}.md',
+        created = git_helpers.push_file(f'{train_num}.md',
                                         md,
                                         f'Updating data for train {train_num}')
-
+        if created:
+            git_helpers.update_readme(train_num)
+            
+        git_helpers.push_file(f'data/{t.id}',
+                              json.dumps(delays_data),
+                              f'Uploading raw data {t.id}')
 
 def generate_md(schedule, train_num, train_data):
     rv = ''
