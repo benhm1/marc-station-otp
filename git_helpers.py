@@ -69,7 +69,7 @@ def push_file(file_path, file_content, commit_message):
             path=file_path, 
             message=commit_message, 
             content=file_content, 
-            sha=contents.sha
+            sha=existing.sha
         )
         print("File updated successfully.")
     return created

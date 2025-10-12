@@ -3,6 +3,7 @@ import json
 import requests
 import datetime
 from bs4 import BeautifulSoup
+from typing import Dict, List, Tuple
 
 def get_active_trains():
     url = 'https://www.mta.maryland.gov/marc-tracker/fetchvehicles'
@@ -47,46 +48,124 @@ def get_train_status(train_num):
             
     return rv
 
-def get_train_schedule(train_num):
-    url = f'https://www.mta.maryland.gov/marc-tracker/train/{train_num}'
+def parse_train_schedule(html_content: str) -> Dict[str, List[Tuple[str, str]]]:
+    """
+    Parses the MARC train schedule HTML table into a dictionary.
 
-    response = requests.get(url)
+    Keys are the train numbers (e.g., 'Train 613'), and values are a list of
+    (station_name, scheduled_arrival_time) tuples.
+
+    Args:
+        html_content: A string containing the HTML structure of the train schedule table.
+
+    Returns:
+        A dictionary mapping train numbers to their stop schedules.
+    """
+    soup = BeautifulSoup(html_content, 'html.parser')
+    train_schedule: Dict[str, List[Tuple[str, str]]] = {}
     
-    if response.status_code != 200:
-        return []
+    # 1. Extract Train Numbers (Headers)
+    table = soup.find('table')
+    if not table:
+        print("Error: Could not find the main <table> in the HTML content.")
+        return train_schedule
+    
+    header_row = table.find('thead').find('tr')
+    
+    # Skip the first <th> element, which contains the "Stops" column title
+    train_name_elements = header_row.find_all('th')[1:]
+    
+    train_names = []
+    # Regex to capture "Train XXX" where XXX is the number, ignoring (R), <br>, etc.
+    train_number_pattern = re.compile(r'(Train\s+\d+)')
 
-    soup = BeautifulSoup(response.text, 'lxml')
+    for th in train_name_elements:
+        # Get all text content from the header, removing all tags
+        text_content = th.get_text(strip=True)
+        match = train_number_pattern.search(text_content)
+        
+        if match:
+            # The full train name (e.g., 'Train 613')
+            train_names.append(match.group(1).split()[1])
+        else:
+            # Fallback/Error handling if pattern changes
+            train_names.append(f"UNKNOWN_TRAIN_{len(train_names) + 1}")
 
-    trip_info_block = soup.find(id='tripinfoblock')
-
-    schedule = []
-
-    trip_segments = trip_info_block.select('div.stop-route-wrapper-rt')
-
-    for segment in trip_segments:
-        station_div = segment.select_one('.row.detail-header > div:nth-child(1)')
-        scheduled_time_div = segment.select_one('.row.detail-header > div:nth-child(2)')
-
-        if station_div and scheduled_time_div:
-            station_text = station_div.get_text(strip=True)
-            time_text = scheduled_time_div.get_text(strip=True)
+    # Initialize the schedule dictionary with train names as keys
+    train_schedule = {name: [] for name in train_names}
+    
+    # 2. Extract Station Names and Times (Body Rows)
+    body_rows = table.find('tbody').find_all('tr')
+    
+    for row in body_rows:
+        # Get the station name from the first <th> element in the row
+        station_th = row.find('th', class_='stop-name')
+        if not station_th:
+            continue
             
-            schedule.append((station_text, time_text))
+        # The station name is inside a <div> within the <th>
+        station_name = station_th.get_text(strip=True)
+        
+        # Get all the time cells (<td> elements) in this row
+        time_cells = row.find_all('td')
+        
+        # 3. Map Times to the corresponding Trains
+        for i, time_td in enumerate(time_cells):
+            if i < len(train_names):
+                train_name = train_names[i]
+                
+                # The arrival time is usually inside a <div>
+                time_div = time_td.find('div', class_='cell-width')
+                arrival_time_raw = time_div.get_text(strip=True) if time_div else time_td.get_text(strip=True)
+                
+                # Clean up the arrival time, removing special characters like (L) or (R)
+                # which denote notes, not part of the time itself
+                arrival_time = arrival_time_raw.split('\t')[0]
+
+                if arrival_time == '--':
+                    continue
+                
+                # Append the (station_name, arrival_time) tuple to the correct train's list
+                train_schedule[train_name].append((station_name, arrival_time))
+
+    return train_schedule
+
+def get_all_schedules(day):
+
+    schedule = {}
+    
+    day_str = day.strftime('%m/%d/%Y')
+
+    for direction in [0, 1]:
+        for line in ['brunswick', 'penn', 'camden']:
+
+            print(line, direction)
+            timetable = requests.get(f'https://www.mta.maryland.gov/schedule/timetable/marc-{line}',
+                                     params = {'direction' : str(direction),
+                                               'schedule_date' : day_str})
+            print(timetable)
             
-    # Remove the header row
-    schedule = schedule[1:]
+            data = parse_train_schedule(timetable.text)
+
+            schedule.update(data)
+            
+    for train in schedule:
+        print(train)
+        for stop in schedule[train]:
+            print('    ', stop)
+        print('-' * 50)
 
     return schedule
 
-def timestamp_diff(t1, t2):
-    obj1 = datetime.datetime.strptime(t1, '%I:%M %p')
-    obj2 = datetime.datetime.strptime(t2, '%I:%M %p')
+def timestamp_diff(scheduled_raw, actual_raw):
+    scheduled = datetime.datetime.strptime(scheduled_raw, '%I:%M%p')
+    actual = datetime.datetime.strptime(actual_raw, '%I:%M %p')
 
     # Train departed at / ahead of schedule
-    if obj2 < obj1:
+    if actual < scheduled:
         return 0
     
-    delta = obj2 - obj1
+    delta = actual - scheduled
 
     minutes = delta.seconds // 60
 
@@ -107,8 +186,9 @@ def calculate_delays(schedule, actual):
     
 if __name__ == '__main__':
     trains = get_active_trains()
+    schedules = get_all_schedules(datetime.datetime.today())
     for t in trains:
-        schedule = get_train_schedule(t['train_num'])
+        schedule = schedules[t['train_num']]
         actual = get_train_status(t['train_num'])
         delays = calculate_delays(schedule, actual)
         print(delays)

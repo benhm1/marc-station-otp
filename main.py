@@ -3,6 +3,7 @@ import git_helpers
 
 import json
 import datetime
+import pytz
 
 import functions_framework
 from google.cloud.firestore_v1.field_path import FieldPath
@@ -15,9 +16,10 @@ NUM_SAMPLES = 30
 initialize_app()
 db = firestore.Client()
 
+
 @scheduler_fn.on_schedule(schedule="* * * * *")
 def get_train_actuals(event):
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(pytz.timezone('US/Eastern'))
     base_key = now.strftime('%Y-%m-%d')
     
     running = train_data.get_active_trains()
@@ -27,8 +29,8 @@ def get_train_actuals(event):
         doc_ref = db.collection('actuals').document(f'{base_key}_{t["train_num"]}')
 
         doc_ref.set(status, merge=True)
-    
-@scheduler_fn.on_schedule(schedule="0 7 * * *", secrets=['PAT_TOKEN'])
+
+@scheduler_fn.on_schedule(schedule="30 7 * * *", secrets=['PAT_TOKEN'])
 def calculate_train_delays(event):
 
     db_actuals = db.collection('actuals')
@@ -36,10 +38,13 @@ def calculate_train_delays(event):
     
     # Clean up train data that's older than 60 days
     clean_up_actuals()
+
+    # Get yesterday's timetables
+    now = datetime.datetime.now(pytz.timezone('US/Eastern'))
+    yesterday = now - datetime.timedelta(days = 1)
+    schedules = train_data.get_all_schedules(yesterday)
     
     # Query for all of the trains that ran yesterday
-    now = datetime.datetime.now()
-    yesterday = now - datetime.timedelta(days = 1)
     base_key = yesterday.strftime('%Y-%m-%d')
     range_start = base_key
     range_end = range_start + '_A'
@@ -60,7 +65,12 @@ def calculate_train_delays(event):
         train_num = t.id.split('_')[-1]
 
         # Get its schedule and calculate per-station delays
-        schedule = train_data.get_train_schedule(train_num)
+        if train_num not in schedules:
+            print(f'Train {train_num} not found in schedule!')
+            continue
+        
+        schedule = schedules[train_num]
+        
         delay_data = t.to_dict()
         delays = train_data.calculate_delays(schedule, delay_data)
         print(f'Train {train_num} delays: {delays}')
@@ -100,6 +110,7 @@ def calculate_train_delays(event):
         git_helpers.push_file(f'data/{t.id}',
                               json.dumps(delay_data),
                               f'Uploading raw data {t.id}')
+    print('All done!')
     
 def generate_md(schedule, train_num, train_data):
     rv = ''
@@ -109,21 +120,26 @@ def generate_md(schedule, train_num, train_data):
 
     for station, _ in schedule:
         name = station
-        count = len(train_data[station])
-        minv = min(train_data[station])
-        maxv = max(train_data[station])
-        mean = '%.2f' % (sum(train_data[station]) / len(train_data[station]))
-        median = sorted(train_data[station])[len(train_data[station])//2]
+        if station in train_data:
+            count = len(train_data[station])
+            minv = min(train_data[station])
+            maxv = max(train_data[station])
+            mean = '%.2f' % (sum(train_data[station]) / len(train_data[station]))
+            median = sorted(train_data[station])[len(train_data[station])//2]
+        else:
+            print(f'Train {train_num} stops at {station} but we have no data!')
+            count = 0
+            minv = maxv = mean = median = ''
         rv += f'| {name} | {count} | {minv} | {maxv} | {mean} | {median} |\n'
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(pytz.timezone('US/Eastern'))
     rv += f'\n\nLast Updated: {now.isoformat()}'
     return rv
         
 def clean_up_actuals():
     db_actuals = db.collection('actuals')
     
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(pytz.timezone('US/Eastern'))
     oldest = now - datetime.timedelta(days = 60)
     base_key = oldest.strftime('%Y-%m-%d')
     range_start = base_key    
@@ -139,3 +155,7 @@ def clean_up_actuals():
         db_actuals.document(t.id).delete()
 
     print('Done cleaning up old actuals')
+
+if __name__ == '__main__':
+    calculate_train_delays(None)
+    
