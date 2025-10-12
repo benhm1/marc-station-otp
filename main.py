@@ -32,7 +32,7 @@ def get_train_actuals(event):
 
 @scheduler_fn.on_schedule(schedule="30 7 * * *",
                           secrets=['PAT_TOKEN'],
-                          timeout_sec=180)
+                          timeout_sec=300)
 def calculate_train_delays(event):
 
     db_actuals = db.collection('actuals')
