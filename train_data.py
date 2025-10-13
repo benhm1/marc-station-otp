@@ -43,8 +43,13 @@ def get_train_status(train_num):
     # Collapse the JS array into a single dict
     rv = {}
     for stop in stops:
-        for k in stop:
-            rv[k] = stop[k]
+        if type(stop) is list:
+            rv['0'] = stop[0]
+        elif type(stop) is dict:
+            for k in stop:
+                rv[k] = stop[k]
+        else:
+            print(f'Unknown data type in stops: {stops}')
             
     return rv
 
@@ -117,12 +122,14 @@ def parse_train_schedule(html_content: str) -> Dict[str, List[Tuple[str, str]]]:
                 # The arrival time is usually inside a <div>
                 time_div = time_td.find('div', class_='cell-width')
                 arrival_time_raw = time_div.get_text(strip=True) if time_div else time_td.get_text(strip=True)
+
+                arrival_time_raw = arrival_time_raw.replace('(R)', '').replace('(L)', '')
                 
                 # Clean up the arrival time, removing special characters like (L) or (R)
                 # which denote notes, not part of the time itself
-                arrival_time = arrival_time_raw.split('\t')[0]
+                arrival_time = arrival_time_raw.split('\t')[0].strip()
 
-                if arrival_time == '--':
+                if arrival_time == '--' or arrival_time == '':
                     continue
                 
                 # Append the (station_name, arrival_time) tuple to the correct train's list
@@ -174,13 +181,21 @@ def timestamp_diff(scheduled_raw, actual_raw):
 def calculate_delays(schedule, actual):
     
     rv = {}
+    
+    # Some trains start their schedule at index 1 (e.g.: 502). Others
+    # start it at index 0 (e.g.: 410). Sigh.
+    if '0' in actual:
+        offset = 0
+    else:
+        offset = 1
+
     for idx, (stop, stop_time) in enumerate(schedule):
-        if str(idx + 1) in actual:
-            delay = timestamp_diff(stop_time, actual[str(idx + 1)])
+        if str(idx + offset) in actual:
+            delay = timestamp_diff(stop_time, actual[str(idx + offset)])
             rv[stop] = delay
         else:
             print(f'Missing data for {stop}!')
-
+            
     return rv
     
     
@@ -188,8 +203,20 @@ if __name__ == '__main__':
     trains = get_active_trains()
     schedules = get_all_schedules(datetime.datetime.today())
     for t in trains:
+        print('-' * 50)
+        print(f'Train {t["train_num"]}')
         schedule = schedules[t['train_num']]
+        print('Schedule')
+        for each in schedule:
+            print(f'\t{each}')
+            
         actual = get_train_status(t['train_num'])
+        print('Actual')
+        for each in sorted(actual.keys()):
+            print('\t', each, actual[each])
+            
         delays = calculate_delays(schedule, actual)
-        print(delays)
+        print('Delays')
+        for each in delays:
+            print('\t', each, delays[each])
         

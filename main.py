@@ -24,6 +24,7 @@ def get_train_actuals(event):
     
     running = train_data.get_active_trains()
     for t in running:
+        print(t)
         status = train_data.get_train_status(t['train_num'])
         
         doc_ref = db.collection('actuals').document(f'{base_key}_{t["train_num"]}')
@@ -159,5 +160,6 @@ def clean_up_actuals():
     print('Done cleaning up old actuals')
 
 if __name__ == '__main__':
-    calculate_train_delays(None)
+    get_train_actuals(None)
+    # calculate_train_delays(None)
     
