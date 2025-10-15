@@ -104,7 +104,7 @@ def calculate_train_delays(event):
         md = generate_md(schedule, train_num, data)
         
         # Push Markdown File
-        created = git_helpers.push_file(f'{train_num}.md',
+        created = git_helpers.push_file(f'train_{train_num}.md',
                                         md,
                                         f'Updating data for train {train_num}')
         if created:

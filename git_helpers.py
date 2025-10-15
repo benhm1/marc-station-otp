@@ -15,7 +15,7 @@ def update_readme(train_num):
     
     trains = readme_content.split('\n')
 
-    new_train = f'* [Train {train_num}]({train_num}.md)'
+    new_train = f'* [Train {train_num}](train_{train_num}.md)'
 
     if new_train in trains:
         print('Train is already there!')
